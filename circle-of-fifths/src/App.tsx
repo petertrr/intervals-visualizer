@@ -1,4 +1,3 @@
-import './App.css'
 import OctaveVisualizer from './OctaveVisualizer'
 
 function App() {
