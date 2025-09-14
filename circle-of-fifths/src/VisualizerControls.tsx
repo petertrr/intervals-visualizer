@@ -1,9 +1,10 @@
 import type { Mode } from "./OctaveVisualizer"
 
 const keys = [
-  "C", "G", "D", "A", "E", "B", "F♯", "C♯",
-  "F", "B♭", "E♭", "A♭", "D♭", "G♭", "C♭"
+  "C", "D", "E", "F", "G", "A", "H"
 ]
+
+const allKeys = keys.flatMap(key => [key, key + "#", key + "b"]).flatMap(key => [key + "1 major", key + "1 minor"])
 
 interface VisualizerControlsProps {
   selectedKey: string
@@ -28,7 +29,7 @@ export default function VisualizerControls({
             onChange={e => onKeyChange(e.target.value)}
             className="border rounded px-2 py-1"
           >
-            {keys.map(k => (
+            {allKeys.map(k => (
               <option key={k} value={k}>{k}</option>
             ))}
           </select>

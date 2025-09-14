@@ -18,16 +18,17 @@ function getOuterSVG(): SVGElement | null {
 }
 
 export default function OctaveVisualizer() {
-  const [key, setKey] = useState("C")
+  const [key, setKey] = useState("C1 major")
   const [mode, setMode] = useState<Mode>("circle")
   const [selectedNotes, setSelectedNotes] = useState<string[]>([])
   const noteRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  const scale = Scale.get(`${key}1 major`)
+  const scale = Scale.get(key)
   const notes = scale.notes
   const semitones = scale.intervals.map(i => Interval.get(i).semitones)
   const fullNotes = [
     ...scale.notes,
+    // TODO
     ...Scale.get(`${key}2 major`).notes
   ] // two octaves for linear mode
 
@@ -239,19 +240,6 @@ export default function OctaveVisualizer() {
                       stroke="green"
                       strokeWidth={6}
                       fill="white"
-                    />
-                  )
-                } else {
-                  // Inner nodes: small and grey
-                  return (
-                    <circle
-                      key={note}
-                      cx={x}
-                      cy={y}
-                      r={12}
-                      stroke="gray"
-                      strokeWidth={2}
-                      fill="#eee"
                     />
                   )
                 }
