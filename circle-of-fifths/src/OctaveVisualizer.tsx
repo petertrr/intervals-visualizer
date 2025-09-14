@@ -7,10 +7,10 @@ export type Mode = "linear" | "circle"
 
 function getAngle(svg: SVGElement, clientX: number, clientY: number): number {
     const svgRect = svg.getBoundingClientRect()
-    const centerX = 150, centerY = 150
+    const centerX = 150
     const mouseX = clientX - svgRect.left
     const mouseY = clientY - svgRect.top
-    return Math.atan2(mouseY - centerY, mouseX - centerX)
+    return Math.atan2(mouseY - centerX, mouseX - centerX)
 }
 
 function getOuterSVG(): SVGElement | null {
@@ -56,6 +56,8 @@ export default function OctaveVisualizer() {
   const [dragging, setDragging] = useState(false)
   const [dragStartAngle, setDragStartAngle] = useState<number | null>(null)
   const [dragCurrentAngle, setDragCurrentAngle] = useState<number | null>(null)
+  const [dragStartX, setDragStartX] = useState<number | null>(null)
+  const [dragCurrentX, setDragCurrentX] = useState<number | null>(null)
 
   // Chord visualization logic
   let chordNotes: string[] = []
@@ -79,8 +81,13 @@ export default function OctaveVisualizer() {
   // Handler for starting drag on a line segment
   const handleLineDragStart = (e: React.MouseEvent) => {
     e.preventDefault()
-    if (mode !== "circle" || selectedNotes.length < 2 && chordNotes.length === 0) {
-      // TODO: linear mode
+    if (mode === "linear") {
+      setDragging(true)
+      setDragStartX(e.clientX)
+      setDragCurrentX(e.clientX)
+      return
+    }
+    if (selectedNotes.length < 2 && chordNotes.length === 0) {
       return
     }
     setDragging(true)
@@ -94,7 +101,13 @@ export default function OctaveVisualizer() {
 
   // Handler for dragging
   const handleLineDragMove = (e: React.MouseEvent) => {
-    if (!dragging || dragStartAngle === null) return
+    if (!dragging) return
+    if (mode === "linear") {
+      if (dragStartX === null) return
+      setDragCurrentX(e.clientX)
+      return
+    }
+    if (dragStartAngle === null) return
     const svg = getOuterSVG()
     if (!svg) return
     const angle = getAngle(svg, e.clientX, e.clientY)
@@ -105,6 +118,8 @@ export default function OctaveVisualizer() {
     setDragging(false)
     setDragStartAngle(null)
     setDragCurrentAngle(null)
+    setDragStartX(null)
+    setDragCurrentX(null)
   }
 
   const getClass = (note: string) => {
@@ -137,7 +152,7 @@ export default function OctaveVisualizer() {
         })
       } else {
         const r = 120
-        const centerX = 150, centerY = 150
+        const centerX = 150
         let offset = 0
         if (dragging && dragStartAngle !== null && dragCurrentAngle !== null) {
           offset = dragCurrentAngle - dragStartAngle
@@ -151,7 +166,7 @@ export default function OctaveVisualizer() {
             const angle = (360 / 12 * semitones[semitoneIdx] - 90) * Math.PI / 180 + offset
             positions.push({
               x: r * Math.cos(angle) + centerX,
-              y: r * Math.sin(angle) + centerY,
+              y: r * Math.sin(angle) + centerX,
             })
           }
         })
@@ -197,38 +212,116 @@ export default function OctaveVisualizer() {
       )}
 
       {mode === "linear" ? (
-        <div className="relative">
-          <div className="flex gap-4 justify-center mt-4">
-            {allNotes.map((note, i) => (
-              <div
-                key={i}
-                ref={el => { noteRefs.current[note] = el }}
-                onClick={() => handleNoteClick(note)}
-                className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-medium cursor-pointer ${getClass(note)}`}
-              >
-                {note}
-              </div>
-            ))}
-          </div>
-          {linePos && (
-            <svg
-              className="absolute top-0 left-0 w-full h-full pointer-events-auto"
+        <div className="relative" style={{ minHeight: '120px' }}
+            onMouseMove={handleLineDragMove}
+            onMouseUp={handleLineDragEnd}
+            onMouseLeave={handleLineDragEnd}
             >
-              {linePos.map((seg, i) => (
-                <line
-                  key={i}
-                  x1={seg.x1}
-                  y1={seg.y1}
-                  x2={seg.x2}
-                  y2={seg.y2}
-                  stroke={"gray"}
-                  strokeWidth="2"
+          {/* SVG for green line and chain nodes */}
+          <svg
+            className="absolute top-0 left-0 w-full h-24 pointer-events-auto"
+            width="100%"
+            height="96"
+            viewBox={`0 0 ${window.innerWidth} 96`}
+            style={{ width: '100vw', left: 0 }}
+          >
+            {/* Draw green line for chain */}
+            {(() => {
+              const chain = (selectedChord ? chordNotes : (selectedNotes.length === 2 ? getNoteChain(selectedNotes[0], selectedNotes[1], allNotes) : []))
+              if (chain.length < 2) return null
+              // Calculate positions for all notes in chain
+              const totalWidth = window.innerWidth
+              const margin = 40
+              const step = (totalWidth - 2 * margin) / (allNotes.length - 1)
+              let xOffset = 0
+              if (dragging && dragStartX !== null && dragCurrentX !== null) {
+                xOffset = dragCurrentX - dragStartX
+              }
+              const positions = chain.map(note => {
+                const idx = allNotes.findIndex(n => n === note)
+                return {
+                  x: margin + idx * step + xOffset,
+                  y: 60,
+                }
+              })
+              // Draw green line
+              const path = positions.length > 1
+                ? `M ${positions[0].x} ${positions[0].y} ` + positions.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')
+                : null
+              return path ? (
+                <path
+                  d={path}
+                  stroke="green"
+                  strokeWidth={6}
+                  fill="none"
                   onMouseDown={handleLineDragStart}
-                  style={{ cursor: "grab" }}
                 />
-              ))}
-            </svg>
-          )}
+              ) : null
+            })()}
+            {/* Draw chain nodes as circles */}
+            {(() => {
+              const chain = (selectedChord ? chordNotes : (selectedNotes.length === 2 ? getNoteChain(selectedNotes[0], selectedNotes[1], allNotes) : []))
+              if (chain.length < 2) return null
+              const totalWidth = window.innerWidth
+              const margin = 40
+              const step = (totalWidth - 2 * margin) / (allNotes.length - 1)
+              let xOffset = 0
+              if (dragging && dragStartX !== null && dragCurrentX !== null) {
+                xOffset = dragCurrentX - dragStartX
+              }
+              return chain.map((note, i) => {
+                const idx = allNotes.findIndex(n => n === note)
+                const x = margin + idx * step + xOffset
+                const y = 60
+                if (i === 0 || i === chain.length - 1) {
+                  return (
+                    <circle
+                      key={note}
+                      cx={x}
+                      cy={y}
+                      r={26}
+                      stroke="green"
+                      strokeWidth={6}
+                      fill="white"
+                    />
+                  )
+                } else {
+                  return (
+                    <circle
+                      key={note}
+                      cx={x}
+                      cy={y}
+                      r={26}
+                      stroke="gray"
+                      strokeWidth={4}
+                      fill="#eee"
+                    />
+                  )
+                }
+              })
+            })()}
+          </svg>
+          {/* Draw notes above chain nodes */}
+          <div className="flex gap-4 justify-center mt-4" style={{ position: 'relative', width: '100vw' }}>
+            {allNotes.map((note, i) => {
+              const totalWidth = window.innerWidth
+              const margin = 40
+              const step = (totalWidth - 2 * margin) / (allNotes.length - 1)
+              let xOffset = 0
+              const x = margin + i * step + xOffset
+              return (
+                <div
+                  key={i}
+                  ref={el => { noteRefs.current[note] = el }}
+                  onClick={() => handleNoteClick(note)}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-medium cursor-pointer ${getClass(note)}`}
+                  style={{ position: 'absolute', left: x - 24, top: 36, zIndex: 2 }}
+                >
+                  {note}
+                </div>
+              )
+            })}
+          </div>
         </div>
       ) : (
         <div className="relative w-[300px] h-[300px] mx-auto"
@@ -246,7 +339,7 @@ export default function OctaveVisualizer() {
                 (selectedNotes.length === 2 ? selectedNotes : []))
               if (chain.length < 2) return null
               const r = 120
-              const centerX = 150, centerY = 150
+              const centerX = 150
               // Get start and end angles
               let offset = 0
               if (dragging && dragStartAngle !== null && dragCurrentAngle !== null) {
@@ -267,9 +360,9 @@ export default function OctaveVisualizer() {
               const arcSweep = Math.abs(angleEnd - angleStart) > Math.PI ? 1 : 0
               // SVG arc path
               const x1 = r * Math.cos(angleStart) + centerX
-              const y1 = r * Math.sin(angleStart) + centerY
+              const y1 = r * Math.sin(angleStart) + centerX
               const x2 = r * Math.cos(angleEnd) + centerX
-              const y2 = r * Math.sin(angleEnd) + centerY
+              const y2 = r * Math.sin(angleEnd) + centerX
               const path = `M ${x1} ${y1} A ${r} ${r} 0 ${arcSweep} 1 ${x2} ${y2}`
               return (
                 <path
@@ -288,7 +381,7 @@ export default function OctaveVisualizer() {
                 (selectedNotes.length === 2 ? selectedNotes : []))
               if (chain.length < 2) return null
               const r = 120
-              const centerX = 150, centerY = 150
+              const centerX = 150
               return chain.map((note, i) => {
                 const idx = allNotes.findIndex(n => n === note)
                 if (idx === -1) return null
@@ -299,7 +392,7 @@ export default function OctaveVisualizer() {
                 const semitoneIdx = idx % semitones.length
                 const angle = (360 / 12 * semitones[semitoneIdx] - 90) * Math.PI / 180 + offset
                 const x = r * Math.cos(angle) + centerX
-                const y = r * Math.sin(angle) + centerY
+                const y = r * Math.sin(angle) + centerX
                 if (i === 0 || i === chain.length - 1) {
                   return (
                     <circle
