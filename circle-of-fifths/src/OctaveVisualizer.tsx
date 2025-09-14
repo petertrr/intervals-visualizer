@@ -53,7 +53,7 @@ export default function OctaveVisualizer() {
   const [dragCurrentAngle, setDragCurrentAngle] = useState<number | null>(null)
 
   // Handler for starting drag on a line segment
-  const handleLineDragStart = (e: React.MouseEvent, segmentIndex: number) => {
+  const handleLineDragStart = (e: React.MouseEvent) => {
     e.preventDefault()
     if (mode !== "circle" || selectedNotes.length < 2) {
       // TODO: linear mode
@@ -184,7 +184,7 @@ export default function OctaveVisualizer() {
                   y2={seg.y2}
                   stroke={"gray"}
                   strokeWidth="2"
-                  onMouseDown={e => handleLineDragStart(e, i)}
+                  onMouseDown={handleLineDragStart}
                   style={{ cursor: "grab" }}
                 />
               ))}
@@ -200,19 +200,40 @@ export default function OctaveVisualizer() {
           <svg
             className="absolute top-0 left-0 w-full h-full pointer-events-auto circle-svg"
           >
-            {linePos && linePos.map((seg, i) => (
-              <line
-                key={i}
-                x1={seg.x1}
-                y1={seg.y1}
-                x2={seg.x2}
-                y2={seg.y2}
-                stroke={"gray"}
-                strokeWidth="2"
-                onMouseDown={e => handleLineDragStart(e, i)}
-                style={{ cursor: "grab" }}
-              />
-            ))}
+            {/* Draw chain as a continuous arc instead of lines */}
+            {(() => {
+              const chain = (selectedNotes.length === 2 ? getNoteChain(selectedNotes[0], selectedNotes[1], notes) : [])
+              if (chain.length < 2) return null
+              const r = 120
+              const centerX = 150, centerY = 150
+              // Get start and end angles
+              let offset = 0
+              if (dragging && dragStartAngle !== null && dragCurrentAngle !== null) {
+                offset = dragCurrentAngle - dragStartAngle
+              }
+              const idxStart = notes.findIndex(n => n === chain[0])
+              const idxEnd = notes.findIndex(n => n === chain[chain.length - 1])
+              if (idxStart === -1 || idxEnd === -1) return null
+              const angleStart = (360 / 12 * semitones[idxStart] - 90) * Math.PI / 180 + offset
+              const angleEnd = (360 / 12 * semitones[idxEnd] - 90) * Math.PI / 180 + offset
+              // Large arc flag: always 0 for minor arc, 1 for major arc
+              const arcSweep = Math.abs(angleEnd - angleStart) > Math.PI ? 1 : 0
+              // SVG arc path
+              const x1 = r * Math.cos(angleStart) + centerX
+              const y1 = r * Math.sin(angleStart) + centerY
+              const x2 = r * Math.cos(angleEnd) + centerX
+              const y2 = r * Math.sin(angleEnd) + centerY
+              const path = `M ${x1} ${y1} A ${r} ${r} 0 ${arcSweep} 1 ${x2} ${y2}`
+              return (
+                <path
+                  d={path}
+                  stroke="green"
+                  strokeWidth={6}
+                  fill="none"
+                  onMouseDown={handleLineDragStart}
+                />
+              )
+            })()}
             {/* Draw chain nodes as circles */}
             {(() => {
               const chain = (selectedNotes.length === 2 ? getNoteChain(selectedNotes[0], selectedNotes[1], notes) : [])
