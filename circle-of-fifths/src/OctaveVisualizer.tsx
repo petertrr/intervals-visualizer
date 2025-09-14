@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
-import { Scale, Interval } from "tonal"
-import VisualizerControls from "./VisualizerControls"
+import { Scale, Interval, Chord } from "tonal"
+import VisualizerControls, { chords } from "./VisualizerControls"
 import { getNoteChain } from "./Notes"
 
 export type Mode = "linear" | "circle"
@@ -21,16 +21,17 @@ export default function OctaveVisualizer() {
   const [key, setKey] = useState("C1 major")
   const [mode, setMode] = useState<Mode>("circle")
   const [selectedNotes, setSelectedNotes] = useState<string[]>([])
+  const [selectedChord, setSelectedChord] = useState<string | null>(null)
   const noteRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const scale = Scale.get(key)
   const notes = scale.notes
   const semitones = scale.intervals.map(i => Interval.get(i).semitones)
-  const fullNotes = [
-    ...scale.notes,
-    // TODO
-    ...Scale.get(`${key}2 major`).notes
-  ] // two octaves for linear mode
+
+  // Use two octaves for both modes
+  const visibleNotes = notes // first octave, visible
+  const invisibleNotes = Scale.get(key.replace("1", "2")).notes // second octave, invisible
+  const allNotes = [...visibleNotes, ...invisibleNotes]
 
   const handleNoteClick = (note: string) => {
     if (selectedNotes.length >= 2) {
@@ -39,6 +40,10 @@ export default function OctaveVisualizer() {
       setSelectedNotes(selectedNotes.filter(n => n !== note))
     } else {
       setSelectedNotes([...selectedNotes, note])
+    }
+
+    if (selectedChord != null) {
+      setSelectedChord(null)
     }
   }
 
@@ -52,10 +57,29 @@ export default function OctaveVisualizer() {
   const [dragStartAngle, setDragStartAngle] = useState<number | null>(null)
   const [dragCurrentAngle, setDragCurrentAngle] = useState<number | null>(null)
 
+  // Chord visualization logic
+  let chordNotes: string[] = []
+  if (selectedChord) {
+    const chordType = chords.get(selectedChord) || selectedChord
+    for (const note of notes) {
+      const chord = Chord.getChord(chordType, note)
+      if (!chord.empty) {
+        let curChordNotes = Chord.notes(chord.type, note)
+        if (curChordNotes.every(n => allNotes.includes(n))) {
+          chordNotes = curChordNotes
+          break
+        }
+      }
+    }
+    if (chordNotes.length === 0) {
+//      alert(`Could not build ${selectedChord} in ${key} scale within 1 octave (switch to linear mode?)`)
+    }
+  }
+
   // Handler for starting drag on a line segment
   const handleLineDragStart = (e: React.MouseEvent) => {
     e.preventDefault()
-    if (mode !== "circle" || selectedNotes.length < 2) {
+    if (mode !== "circle" || selectedNotes.length < 2 && chordNotes.length === 0) {
       // TODO: linear mode
       return
     }
@@ -90,7 +114,12 @@ export default function OctaveVisualizer() {
   }
 
   useEffect(() => {
-    const chain = (selectedNotes.length === 2 ? getNoteChain(selectedNotes[0], selectedNotes[1], mode === "linear" ? fullNotes : notes) : [])
+    let chain: string[] = []
+    if (selectedChord && chordNotes.length > 0) {
+      chain = chordNotes
+    } else if (selectedNotes.length === 2) {
+      chain = getNoteChain(selectedNotes[0], selectedNotes[1], mode === "linear" ? allNotes : allNotes)
+    }
     if (chain.length >= 2) {
       let positions: Array<{ x: number, y: number }> = []
       if (mode === "linear") {
@@ -114,9 +143,12 @@ export default function OctaveVisualizer() {
           offset = dragCurrentAngle - dragStartAngle
         }
         chain.forEach(note => {
-          const i = notes.findIndex(n => n === note)
+          const i = allNotes.findIndex(n => n === note)
+          // For both octaves, position by index
           if (i !== -1) {
-            const angle = (360 / 12 * semitones[i] - 90) * Math.PI / 180 + offset
+            // Use semitones from first octave for both
+            const semitoneIdx = i % semitones.length
+            const angle = (360 / 12 * semitones[semitoneIdx] - 90) * Math.PI / 180 + offset
             positions.push({
               x: r * Math.cos(angle) + centerX,
               y: r * Math.sin(angle) + centerY,
@@ -135,20 +167,27 @@ export default function OctaveVisualizer() {
         })
       }
       setLinePos(segments)
-      setIntervalLabel(chain[0] + " to " + chain[chain.length - 1] + ": " + Interval.distance(chain[0], chain[chain.length - 1]))
+      setIntervalLabel(chain[0] + " to " + chain[chain.length - 1] + ": " + chain.join(", "))
     } else {
       setLinePos([])
       setIntervalLabel(null)
     }
-  }, [selectedNotes, mode, key, dragging, dragStartAngle, dragCurrentAngle]) // note: dependencies should (mostly) only contain state values
+  }, [selectedNotes, selectedChord, mode, key, dragging, dragStartAngle, dragCurrentAngle])
 
   return (
     <div className="p-6 space-y-6">
       <VisualizerControls
         selectedKey={key}
         mode={mode}
+        selectedChord={selectedChord}
         onKeyChange={setKey}
         onModeToggle={() => setMode(mode === "circle" ? "linear" : "circle")}
+        onChordChange={c => {
+          setSelectedChord(c || null)
+          if (c != null) {
+            setSelectedNotes([])
+          }
+        }}
       />
 
       {intervalLabel && (
@@ -160,7 +199,7 @@ export default function OctaveVisualizer() {
       {mode === "linear" ? (
         <div className="relative">
           <div className="flex gap-4 justify-center mt-4">
-            {fullNotes.map((note, i) => (
+            {allNotes.map((note, i) => (
               <div
                 key={i}
                 ref={el => { noteRefs.current[note] = el }}
@@ -202,7 +241,9 @@ export default function OctaveVisualizer() {
           >
             {/* Draw chain as a continuous arc instead of lines */}
             {(() => {
-              const chain = (selectedNotes.length === 2 ? getNoteChain(selectedNotes[0], selectedNotes[1], notes) : [])
+              const chain = (
+                selectedChord ? chordNotes :
+                (selectedNotes.length === 2 ? selectedNotes : []))
               if (chain.length < 2) return null
               const r = 120
               const centerX = 150, centerY = 150
@@ -211,11 +252,17 @@ export default function OctaveVisualizer() {
               if (dragging && dragStartAngle !== null && dragCurrentAngle !== null) {
                 offset = dragCurrentAngle - dragStartAngle
               }
-              const idxStart = notes.findIndex(n => n === chain[0])
-              const idxEnd = notes.findIndex(n => n === chain[chain.length - 1])
+              const idxStart = allNotes.findIndex(n => n === chain[0])
+              const idxEnd = allNotes.findIndex(n => n === chain[chain.length - 1])
               if (idxStart === -1 || idxEnd === -1) return null
-              const angleStart = (360 / 12 * semitones[idxStart] - 90) * Math.PI / 180 + offset
-              const angleEnd = (360 / 12 * semitones[idxEnd] - 90) * Math.PI / 180 + offset
+              const semitoneIdxStart = idxStart % semitones.length
+              const semitoneIdxEnd = idxEnd % semitones.length
+              const angleStart = (360 / 12 * semitones[semitoneIdxStart] - 90) * Math.PI / 180 + offset
+              let angleEnd = (360 / 12 * semitones[semitoneIdxEnd] - 90) * Math.PI / 180 + offset
+              if (idxEnd / semitones.length > 0) {
+                // end is in the next octave
+                angleEnd += 2 * Math.PI
+              }
               // Large arc flag: always 0 for minor arc, 1 for major arc
               const arcSweep = Math.abs(angleEnd - angleStart) > Math.PI ? 1 : 0
               // SVG arc path
@@ -236,21 +283,23 @@ export default function OctaveVisualizer() {
             })()}
             {/* Draw chain nodes as circles */}
             {(() => {
-              const chain = (selectedNotes.length === 2 ? getNoteChain(selectedNotes[0], selectedNotes[1], notes) : [])
+              const chain = (
+                selectedChord ? chordNotes :
+                (selectedNotes.length === 2 ? selectedNotes : []))
               if (chain.length < 2) return null
               const r = 120
               const centerX = 150, centerY = 150
               return chain.map((note, i) => {
-                const idx = notes.findIndex(n => n === note)
+                const idx = allNotes.findIndex(n => n === note)
                 if (idx === -1) return null
                 let offset = 0
                 if (dragging && dragStartAngle !== null && dragCurrentAngle !== null) {
                   offset = dragCurrentAngle - dragStartAngle
                 }
-                const angle = (360 / 12 * semitones[idx] - 90) * Math.PI / 180 + offset
+                const semitoneIdx = idx % semitones.length
+                const angle = (360 / 12 * semitones[semitoneIdx] - 90) * Math.PI / 180 + offset
                 const x = r * Math.cos(angle) + centerX
                 const y = r * Math.sin(angle) + centerY
-                // Outer nodes: first and last
                 if (i === 0 || i === chain.length - 1) {
                   return (
                     <circle
@@ -263,12 +312,24 @@ export default function OctaveVisualizer() {
                       fill="white"
                     />
                   )
+                } else {
+                  return (
+                    <circle
+                      key={note}
+                      cx={x}
+                      cy={y}
+                      r={26}
+                      stroke="gray"
+                      strokeWidth={4}
+                      fill="#eee"
+                    />
+                  )
                 }
               })
             })()}
           </svg>
           {/* Draw notes above chain nodes */}
-          {notes.map((note, i) => {
+          {visibleNotes.map((note, i) => {
             const angle = (360 / 12 * semitones[i] - 90) * Math.PI / 180
             const r = 120
             const x = r * Math.cos(angle) + 150
