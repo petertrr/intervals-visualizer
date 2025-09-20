@@ -7,15 +7,17 @@ export type Mode = "linear" | "circle"
 
 function getAngle(svg: SVGElement, clientX: number, clientY: number): number {
     const svgRect = svg.getBoundingClientRect()
-    const centerX = 150
     const mouseX = clientX - svgRect.left
     const mouseY = clientY - svgRect.top
-    return Math.atan2(mouseY - centerX, mouseX - centerX)
+    return Math.atan2(mouseY - cirleCenter, mouseX - cirleCenter)
 }
 
 function getOuterSVG(): SVGElement | null {
-  return document.querySelector('.circle-svg') as SVGElement | null;
+  return document.querySelector('.circle-svg');
 }
+
+const cirleRadius = 120
+const cirleCenter = 150
 
 export default function OctaveVisualizer() {
   const [key, setKey] = useState("C1 major")
@@ -26,11 +28,11 @@ export default function OctaveVisualizer() {
 
   const scale = Scale.get(key)
   const notes = scale.notes
+  // Array of distances in semitones between consecutive steps of the scale
   const semitones = scale.intervals.map(i => Interval.get(i).semitones)
 
-  // Use two octaves for both modes
   const visibleNotes = notes // first octave, visible
-  const invisibleNotes = Scale.get(key.replace("1", "2")).notes // second octave, invisible
+  const invisibleNotes = Scale.get(key.replace("1", "2")).notes // second octave, invisible in circular mode
   const allNotes = [...visibleNotes, ...invisibleNotes]
 
   const handleNoteClick = (note: string) => {
@@ -48,9 +50,6 @@ export default function OctaveVisualizer() {
   }
 
   const [intervalLabel, setIntervalLabel] = useState<string | null>(null)
-
-  // Coordinates of points (i.e. notes) which should be connected with a line
-  const [linePos, setLinePos] = useState<Array<{ x1: number, y1: number, x2: number, y2: number }>>([])
 
   // Add state for dragging and drag angle
   const [dragging, setDragging] = useState(false)
@@ -81,22 +80,21 @@ export default function OctaveVisualizer() {
   // Handler for starting drag on a line segment
   const handleLineDragStart = (e: React.MouseEvent) => {
     e.preventDefault()
-    if (mode === "linear") {
-      setDragging(true)
-      setDragStartX(e.clientX)
-      setDragCurrentX(e.clientX)
-      return
-    }
     if (selectedNotes.length < 2 && chordNotes.length === 0) {
       return
     }
+
     setDragging(true)
-    // Always use the outer SVG element
-    const svg = getOuterSVG()
-    if (!svg) return
-    const angle = getAngle(svg, e.clientX, e.clientY)
-    setDragStartAngle(angle)
-    setDragCurrentAngle(angle)
+    if (mode === "linear") {
+      setDragStartX(e.clientX)
+      setDragCurrentX(e.clientX)
+    } else {
+      const svg = getOuterSVG()
+      if (!svg) return
+      const angle = getAngle(svg, e.clientX, e.clientY)
+      setDragStartAngle(angle)
+      setDragCurrentAngle(angle)
+    }
   }
 
   // Handler for dragging
@@ -105,13 +103,13 @@ export default function OctaveVisualizer() {
     if (mode === "linear") {
       if (dragStartX === null) return
       setDragCurrentX(e.clientX)
-      return
+    } else {
+      if (dragStartAngle === null) return
+      const svg = getOuterSVG()
+      if (!svg) return
+      const angle = getAngle(svg, e.clientX, e.clientY)
+      setDragCurrentAngle(angle)
     }
-    if (dragStartAngle === null) return
-    const svg = getOuterSVG()
-    if (!svg) return
-    const angle = getAngle(svg, e.clientX, e.clientY)
-    setDragCurrentAngle(angle)
   }
 
   const handleLineDragEnd = () => {
@@ -122,6 +120,9 @@ export default function OctaveVisualizer() {
     setDragCurrentX(null)
   }
 
+  /**
+   * Highlight selected notes green
+   */
   const getClass = (note: string) => {
     if (selectedNotes[0] === note) return "bg-green-200"
     if (selectedNotes[1] === note) return "bg-green-400 text-white"
@@ -133,58 +134,11 @@ export default function OctaveVisualizer() {
     if (selectedChord && chordNotes.length > 0) {
       chain = chordNotes
     } else if (selectedNotes.length === 2) {
-      chain = getNoteChain(selectedNotes[0], selectedNotes[1], mode === "linear" ? allNotes : allNotes)
+      chain = getNoteChain(selectedNotes[0], selectedNotes[1], allNotes)
     }
     if (chain.length >= 2) {
-      let positions: Array<{ x: number, y: number }> = []
-      if (mode === "linear") {
-        chain.forEach(note => {
-          const el = noteRefs.current[note]
-          if (el) {
-            const rect = el.getBoundingClientRect()
-            const svg = el.closest("svg") || el.closest(".relative")
-            const svgRect = svg?.getBoundingClientRect() ?? { left: 0, top: 0 }
-            positions.push({
-              x: rect.left + rect.width / 2 - svgRect.left,
-              y: rect.top + rect.height / 2 - svgRect.top,
-            })
-          }
-        })
-      } else {
-        const r = 120
-        const centerX = 150
-        let offset = 0
-        if (dragging && dragStartAngle !== null && dragCurrentAngle !== null) {
-          offset = dragCurrentAngle - dragStartAngle
-        }
-        chain.forEach(note => {
-          const i = allNotes.findIndex(n => n === note)
-          // For both octaves, position by index
-          if (i !== -1) {
-            // Use semitones from first octave for both
-            const semitoneIdx = i % semitones.length
-            const angle = (360 / 12 * semitones[semitoneIdx] - 90) * Math.PI / 180 + offset
-            positions.push({
-              x: r * Math.cos(angle) + centerX,
-              y: r * Math.sin(angle) + centerX,
-            })
-          }
-        })
-      }
-      // Build line segments between consecutive positions
-      const segments = []
-      for (let i = 0; i < positions.length - 1; ++i) {
-        segments.push({
-          x1: positions[i].x,
-          y1: positions[i].y,
-          x2: positions[i + 1].x,
-          y2: positions[i + 1].y,
-        })
-      }
-      setLinePos(segments)
-      setIntervalLabel(chain[0] + " to " + chain[chain.length - 1] + ": " + chain.join(", "))
+      setIntervalLabel(chain[0] + " to " + chain[chain.length - 1] + ": " + Interval.distance(chain[0], chain[chain.length - 1]))
     } else {
-      setLinePos([])
       setIntervalLabel(null)
     }
   }, [selectedNotes, selectedChord, mode, key, dragging, dragStartAngle, dragCurrentAngle])
@@ -227,7 +181,7 @@ export default function OctaveVisualizer() {
           >
             {/* Draw green line for chain */}
             {(() => {
-              const chain = (selectedChord ? chordNotes : (selectedNotes.length === 2 ? getNoteChain(selectedNotes[0], selectedNotes[1], allNotes) : []))
+              const chain = selectedChord ? chordNotes : selectedNotes
               if (chain.length < 2) return null
               // Calculate positions for all notes in chain
               const totalWidth = window.innerWidth
@@ -260,8 +214,9 @@ export default function OctaveVisualizer() {
             })()}
             {/* Draw chain nodes as circles */}
             {(() => {
-              const chain = (selectedChord ? chordNotes : (selectedNotes.length === 2 ? getNoteChain(selectedNotes[0], selectedNotes[1], allNotes) : []))
+              const chain = selectedChord ? chordNotes : selectedNotes
               if (chain.length < 2) return null
+              
               const totalWidth = window.innerWidth
               const margin = 40
               const step = (totalWidth - 2 * margin) / (allNotes.length - 1)
@@ -332,14 +287,14 @@ export default function OctaveVisualizer() {
           <svg
             className="absolute top-0 left-0 w-full h-full pointer-events-auto circle-svg"
           >
-            {/* Draw chain as a continuous arc instead of lines */}
+            {/* Draw chain as a continuous arc */}
             {(() => {
-              const chain = (
-                selectedChord ? chordNotes :
-                (selectedNotes.length === 2 ? selectedNotes : []))
+              const chain = selectedChord ? chordNotes : selectedNotes
               if (chain.length < 2) return null
-              const r = 120
-              const centerX = 150
+
+              const r = cirleRadius
+              const centerX = cirleCenter
+
               // Get start and end angles
               let offset = 0
               if (dragging && dragStartAngle !== null && dragCurrentAngle !== null) {
@@ -356,6 +311,7 @@ export default function OctaveVisualizer() {
                 // end is in the next octave
                 angleEnd += 2 * Math.PI
               }
+
               // Large arc flag: always 0 for minor arc, 1 for major arc
               const arcSweep = Math.abs(angleEnd - angleStart) > Math.PI ? 1 : 0
               // SVG arc path
@@ -376,12 +332,11 @@ export default function OctaveVisualizer() {
             })()}
             {/* Draw chain nodes as circles */}
             {(() => {
-              const chain = (
-                selectedChord ? chordNotes :
-                (selectedNotes.length === 2 ? selectedNotes : []))
+              const chain = selectedChord ? chordNotes : selectedNotes
               if (chain.length < 2) return null
-              const r = 120
-              const centerX = 150
+
+              const r = cirleRadius
+              const centerX = cirleCenter
               return chain.map((note, i) => {
                 const idx = allNotes.findIndex(n => n === note)
                 if (idx === -1) return null
@@ -424,7 +379,7 @@ export default function OctaveVisualizer() {
           {/* Draw notes above chain nodes */}
           {visibleNotes.map((note, i) => {
             const angle = (360 / 12 * semitones[i] - 90) * Math.PI / 180
-            const r = 120
+            const r = cirleRadius
             const x = r * Math.cos(angle) + 150
             const y = r * Math.sin(angle) + 150
             return (
