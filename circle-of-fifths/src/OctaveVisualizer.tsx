@@ -183,24 +183,31 @@ export default function OctaveVisualizer() {
             {(() => {
               const chain = selectedChord ? chordNotes : selectedNotes
               if (chain.length < 2) return null
-              // Calculate positions for all notes in chain
+              const chainSemitones = chain.map(note => {
+                const idx = allNotes.findIndex(n => n === note)
+                let semi = semitones[idx % semitones.length]
+                if (idx >= semitones.length) {
+                  semi += semitones[semitones.length - 1]
+                }
+                return semi
+              })
+              // Calculate positions for all notes in chain using semitonal distances
               const totalWidth = window.innerWidth
               const margin = 40
-              const step = (totalWidth - 2 * margin) / (allNotes.length - 1)
+              const widthSemi = 24 // 24 semitones in two scales
               let xOffset = 0
               if (dragging && dragStartX !== null && dragCurrentX !== null) {
                 xOffset = dragCurrentX - dragStartX
               }
-              const positions = chain.map(note => {
-                const idx = allNotes.findIndex(n => n === note)
+              const positions = chainSemitones.map((semi, _) => {
                 return {
-                  x: margin + idx * step + xOffset,
+                  x: margin + semi * 1.0 / widthSemi * (totalWidth - 2 * margin) + xOffset,
                   y: 60,
                 }
               })
               // Draw green line
               const path = positions.length > 1
-                ? `M ${positions[0].x} ${positions[0].y} ` + positions.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')
+                ? `M ${positions[0].x + 6} ${positions[0].y} ` + positions.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')
                 : null
               return path ? (
                 <path
@@ -216,17 +223,23 @@ export default function OctaveVisualizer() {
             {(() => {
               const chain = selectedChord ? chordNotes : selectedNotes
               if (chain.length < 2) return null
-              
+              // Get semitone indices for chain notes
+              const chainSemitones = chain.map(note => {
+                const idx = allNotes.findIndex(n => n === note)
+                let semi = semitones[idx % semitones.length]
+                if (idx >= semitones.length) {
+                  semi += semitones[semitones.length - 1]
+                }
+                return semi
+              })
               const totalWidth = window.innerWidth
               const margin = 40
-              const step = (totalWidth - 2 * margin) / (allNotes.length - 1)
               let xOffset = 0
               if (dragging && dragStartX !== null && dragCurrentX !== null) {
                 xOffset = dragCurrentX - dragStartX
               }
               return chain.map((note, i) => {
-                const idx = allNotes.findIndex(n => n === note)
-                const x = margin + idx * step + xOffset
+                const x = margin + chainSemitones[i] * 1.0 / 24 * (totalWidth - 2 * margin) + xOffset
                 const y = 60
                 if (i === 0 || i === chain.length - 1) {
                   return (
@@ -255,28 +268,45 @@ export default function OctaveVisualizer() {
                 }
               })
             })()}
-          </svg>
           {/* Draw notes above chain nodes */}
-          <div className="flex gap-4 justify-center mt-4" style={{ position: 'relative', width: '100vw' }}>
-            {allNotes.map((note, i) => {
+            {allNotes.map((note, idx) => {
+              // semitonal distance from start
+              let semi = semitones[idx % semitones.length]
+              if (idx >= semitones.length) {
+                semi += semitones[semitones.length - 1]
+              }
               const totalWidth = window.innerWidth
-              const margin = 40
-              const step = (totalWidth - 2 * margin) / (allNotes.length - 1)
-              let xOffset = 0
-              const x = margin + i * step + xOffset
+              const margin = 40.0
+              // Find min/max for normalization
+              const maxCumSemi = 24
+              const x = margin + semi * 1.0 / maxCumSemi * (totalWidth - 2 * margin)
+              const y = 60
               return (
-                <div
-                  key={i}
-                  ref={el => { noteRefs.current[note] = el }}
-                  onClick={() => handleNoteClick(note)}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-medium cursor-pointer ${getClass(note)}`}
-                  style={{ position: 'absolute', left: x - 24, top: 36, zIndex: 2 }}
-                >
-                  {note}
-                </div>
+                <g key={note}>
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={24}
+                    fill={"lightgray"} // todo: use getClass(note) to get correct colors if a note is selected
+                    stroke={"green"}
+                    strokeWidth={0}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => handleNoteClick(note)}
+                  />
+                  <text
+                    x={x}
+                    y={y + 6}
+                    textAnchor="middle"
+                    fontSize={16}
+                    fill={"gray"}
+                    style={{ pointerEvents: "none", fontWeight: "bold" }}
+                  >
+                    {note}
+                  </text>
+                </g>
               )
             })}
-          </div>
+          </svg>
         </div>
       ) : (
         <div className="relative w-[300px] h-[300px] mx-auto"
