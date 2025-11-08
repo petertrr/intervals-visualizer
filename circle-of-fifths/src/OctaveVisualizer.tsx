@@ -57,6 +57,9 @@ export default function OctaveVisualizer() {
   const [dragCurrentAngle, setDragCurrentAngle] = useState<number | null>(null)
   const [dragStartX, setDragStartX] = useState<number | null>(null)
   const [dragCurrentX, setDragCurrentX] = useState<number | null>(null)
+  
+  // Add state for hover effects and magnetic attraction
+  const [hoveredElement, setHoveredElement] = useState<string | null>(null)
 
   // Chord visualization logic
   let chordNotes: string[] = []
@@ -85,6 +88,7 @@ export default function OctaveVisualizer() {
     }
 
     setDragging(true)
+    setHoveredElement(null) // Clear hover state when dragging starts
     if (mode === "linear") {
       setDragStartX(e.clientX)
       setDragCurrentX(e.clientX)
@@ -210,13 +214,30 @@ export default function OctaveVisualizer() {
                 ? `M ${positions[0].x + 6} ${positions[0].y} ` + positions.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')
                 : null
               return path ? (
-                <path
-                  d={path}
-                  stroke="green"
-                  strokeWidth={6}
-                  fill="none"
-                  onMouseDown={handleLineDragStart}
-                />
+                <g>
+                  {/* Invisible wider hit area for easier interaction */}
+                  <path
+                    d={path}
+                    stroke="transparent"
+                    strokeWidth={20}
+                    fill="none"
+                    onMouseDown={handleLineDragStart}
+                    onMouseEnter={() => setHoveredElement("line")}
+                    onMouseLeave={() => setHoveredElement(null)}
+                    style={{ cursor: "grab" }}
+                  />
+                  {/* Visible line with hover effects */}
+                  <path
+                    d={path}
+                    stroke="green"
+                    strokeWidth={hoveredElement === "line" ? 8 : 6}
+                    fill="none"
+                    onMouseDown={handleLineDragStart}
+                    onMouseEnter={() => setHoveredElement("line")}
+                    onMouseLeave={() => setHoveredElement(null)}
+                    style={{ cursor: "grab", pointerEvents: "none" }}
+                  />
+                </g>
               ) : null
             })()}
             {/* Draw chain nodes as circles */}
@@ -247,10 +268,14 @@ export default function OctaveVisualizer() {
                       key={note}
                       cx={x}
                       cy={y}
-                      r={26}
+                      r={hoveredElement === `linear-circle-${note}` ? 28 : 26}
                       stroke="green"
-                      strokeWidth={6}
+                      strokeWidth={hoveredElement === `linear-circle-${note}` ? 8 : 6}
                       fill="white"
+                      onMouseDown={handleLineDragStart}
+                      onMouseEnter={() => setHoveredElement(`linear-circle-${note}`)}
+                      onMouseLeave={() => setHoveredElement(null)}
+                      style={{ cursor: "grab" }}
                     />
                   )
                 } else {
@@ -259,10 +284,14 @@ export default function OctaveVisualizer() {
                       key={note}
                       cx={x}
                       cy={y}
-                      r={26}
-                      stroke="gray"
-                      strokeWidth={4}
+                      r={hoveredElement === `linear-circle-${note}` ? 28 : 26}
+                      stroke={hoveredElement === `linear-circle-${note}` ? "green" : "gray"}
+                      strokeWidth={hoveredElement === `linear-circle-${note}` ? 6 : 4}
                       fill="#eee"
+                      onMouseDown={handleLineDragStart}
+                      onMouseEnter={() => setHoveredElement(`linear-circle-${note}`)}
+                      onMouseLeave={() => setHoveredElement(null)}
+                      style={{ cursor: "grab" }}
                     />
                   )
                 }
@@ -281,17 +310,26 @@ export default function OctaveVisualizer() {
               const maxCumSemi = 24
               const x = margin + semi * 1.0 / maxCumSemi * (totalWidth - 2 * margin)
               const y = 60
+              
+              // Check if this note is part of the current chain
+              const currentChain = selectedChord ? chordNotes : selectedNotes
+              const isInChain = currentChain.includes(note)
+              const isHovered = hoveredElement === `linear-note-${note}`
+              
               return (
                 <g key={note}>
                   <circle
                     cx={x}
                     cy={y}
-                    r={24}
+                    r={isHovered && isInChain ? 26 : 24}
                     fill={"lightgray"} // todo: use getClass(note) to get correct colors if a note is selected
-                    stroke={"green"}
-                    strokeWidth={0}
-                    style={{ cursor: "pointer" }}
+                    stroke={isHovered && isInChain ? "green" : "green"}
+                    strokeWidth={isHovered && isInChain ? 3 : 0}
+                    style={{ cursor: isInChain ? "grab" : "pointer" }}
                     onClick={() => handleNoteClick(note)}
+                    onMouseDown={isInChain ? handleLineDragStart : undefined}
+                    onMouseEnter={() => isInChain ? setHoveredElement(`linear-note-${note}`) : undefined}
+                    onMouseLeave={() => isInChain ? setHoveredElement(null) : undefined}
                   />
                   <text
                     x={x}
@@ -351,13 +389,30 @@ export default function OctaveVisualizer() {
               const y2 = r * Math.sin(angleEnd) + centerX
               const path = `M ${x1} ${y1} A ${r} ${r} 0 ${arcSweep} 1 ${x2} ${y2}`
               return (
-                <path
-                  d={path}
-                  stroke="green"
-                  strokeWidth={6}
-                  fill="none"
-                  onMouseDown={handleLineDragStart}
-                />
+                <g>
+                  {/* Invisible wider hit area for easier interaction */}
+                  <path
+                    d={path}
+                    stroke="transparent"
+                    strokeWidth={20}
+                    fill="none"
+                    onMouseDown={handleLineDragStart}
+                    onMouseEnter={() => setHoveredElement("arc")}
+                    onMouseLeave={() => setHoveredElement(null)}
+                    style={{ cursor: "grab" }}
+                  />
+                  {/* Visible arc with hover effects */}
+                  <path
+                    d={path}
+                    stroke="green"
+                    strokeWidth={hoveredElement === "arc" ? 8 : 6}
+                    fill="none"
+                    onMouseDown={handleLineDragStart}
+                    onMouseEnter={() => setHoveredElement("arc")}
+                    onMouseLeave={() => setHoveredElement(null)}
+                    style={{ cursor: "grab", pointerEvents: "none" }}
+                  />
+                </g>
               )
             })()}
             {/* Draw chain nodes as circles */}
@@ -384,10 +439,14 @@ export default function OctaveVisualizer() {
                       key={note}
                       cx={x}
                       cy={y}
-                      r={26}
+                      r={hoveredElement === `circle-circle-${note}` ? 28 : 26}
                       stroke="green"
-                      strokeWidth={6}
+                      strokeWidth={hoveredElement === `circle-circle-${note}` ? 8 : 6}
                       fill="white"
+                      onMouseDown={handleLineDragStart}
+                      onMouseEnter={() => setHoveredElement(`circle-circle-${note}`)}
+                      onMouseLeave={() => setHoveredElement(null)}
+                      style={{ cursor: "grab" }}
                     />
                   )
                 } else {
@@ -396,10 +455,14 @@ export default function OctaveVisualizer() {
                       key={note}
                       cx={x}
                       cy={y}
-                      r={26}
-                      stroke="gray"
-                      strokeWidth={4}
+                      r={hoveredElement === `circle-circle-${note}` ? 28 : 26}
+                      stroke={hoveredElement === `circle-circle-${note}` ? "green" : "gray"}
+                      strokeWidth={hoveredElement === `circle-circle-${note}` ? 6 : 4}
                       fill="#eee"
+                      onMouseDown={handleLineDragStart}
+                      onMouseEnter={() => setHoveredElement(`circle-circle-${note}`)}
+                      onMouseLeave={() => setHoveredElement(null)}
+                      style={{ cursor: "grab" }}
                     />
                   )
                 }
@@ -412,6 +475,12 @@ export default function OctaveVisualizer() {
             const r = cirleRadius
             const x = r * Math.cos(angle) + 150
             const y = r * Math.sin(angle) + 150
+            
+            // Check if this note is part of the current chain
+            const currentChain = selectedChord ? chordNotes : selectedNotes
+            const isInChain = currentChain.includes(note) || currentChain.includes(note.substring(0, note.length - 1) + "2")
+            const isHovered = hoveredElement === `note-${note}`
+            
             return (
               <div
                 key={note}
@@ -421,8 +490,19 @@ export default function OctaveVisualizer() {
                   // FixMe: handle notes from octave 3
                 }}
                 onClick={() => handleNoteClick(note)}
+                onMouseDown={isInChain ? handleLineDragStart : undefined}
+                onMouseEnter={() => isInChain ? setHoveredElement(`note-${note}`) : undefined}
+                onMouseLeave={() => isInChain ? setHoveredElement(null) : undefined}
                 className={`absolute w-12 h-12 rounded-full flex items-center justify-center text-sm font-medium cursor-pointer ${getClass(note)}`}
-                style={{ left: x, top: y, transform: "translate(-50%, -50%)", zIndex: 2 }}
+                style={{ 
+                  left: x, 
+                  top: y, 
+                  transform: `translate(-50%, -50%) ${isHovered ? 'scale(1.1)' : 'scale(1)'}`, 
+                  zIndex: isHovered ? 3 : 2,
+                  cursor: isInChain ? "grab" : "pointer",
+                  transition: "transform 0.1s ease",
+                  boxShadow: isHovered && isInChain ? "0 0 8px rgba(34, 197, 94, 0.5)" : "none"
+                }}
               >
                 {note}
               </div>
