@@ -1,20 +1,9 @@
-import type { Mode } from "./OctaveVisualizer"
-
-const keys = [
-  "C", "D", "E", "F", "G", "A", "H"
-]
-
-const allKeys = keys.flatMap(key => [key, key + "#", key + "b"]).flatMap(key => [key + "1 major", key + "1 minor"])
-
-export const chords = new Map<string, string>([
-  ["major triad", "major"],
-  ["minor triad", "minor"],
-  ["dominant seventh", "maj7"]
-])
+import { VisualizationMode } from "./types/music"
+import { ALL_KEYS, CHORD_TYPES } from "./constants/music"
 
 interface VisualizerControlsProps {
   selectedKey: string
-  mode: Mode
+  mode: VisualizationMode
   selectedChord: string | null
   onKeyChange: (key: string) => void
   onModeToggle: () => void
@@ -39,7 +28,7 @@ export default function VisualizerControls({
             onChange={e => onKeyChange(e.target.value)}
             className="border rounded px-2 py-1"
           >
-            {allKeys.map(k => (
+            {ALL_KEYS.map(k => (
               <option key={k} value={k}>{k}</option>
             ))}
           </select>
@@ -51,7 +40,7 @@ export default function VisualizerControls({
             className="border rounded px-2 py-1"
           >
             <option value="">None</option>
-            {[...chords.keys()].map(c => (
+            {[...CHORD_TYPES.keys()].map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
@@ -60,7 +49,7 @@ export default function VisualizerControls({
           onClick={onModeToggle}
           className="bg-blue-500 text-white px-4 py-2 rounded shadow"
         >
-          Switch to {mode === "circle" ? "Linear" : "Circle"}
+          Switch to {mode === VisualizationMode.CIRCLE ? "Linear" : "Circle"}
         </button>
       </div>
   )
